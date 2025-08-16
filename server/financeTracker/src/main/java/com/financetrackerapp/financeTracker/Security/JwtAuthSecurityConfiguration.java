@@ -1,12 +1,19 @@
 package com.financetrackerapp.financeTracker.Security;
 
+import com.financetrackerapp.financeTracker.Repository.UsersRepository;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 import org.springframework.security.config.Customizer;
@@ -15,6 +22,7 @@ import org.springframework.security.config.annotation.web.configurers.AuthorizeH
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.core.userdetails.jdbc.JdbcDaoImpl;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -33,15 +41,20 @@ import java.util.UUID;
 
 @Configuration
 public class JwtAuthSecurityConfiguration {
+
+
     @Bean
     SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.authorizeHttpRequests((requests) -> ((AuthorizeHttpRequestsConfigurer.AuthorizedUrl) requests.anyRequest()).authenticated());
+        http.authorizeHttpRequests((requests) ->
+                requests.requestMatchers("/signup", "/auth/signup", "/auth/login").permitAll()
+                        .anyRequest().authenticated()
+        );
         http.sessionManagement((session) -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
         http.httpBasic(Customizer.withDefaults());
         http.csrf(csrf->csrf.disable());
         http.headers(headers -> headers.frameOptions(frameOptions->frameOptions.sameOrigin()));
         http.oauth2ResourceServer((oauth2)->oauth2.jwt(Customizer.withDefaults()));
-        return (SecurityFilterChain) http.build();
+        return http.build();
     }
     @Bean
     public KeyPair keyPair(){
@@ -73,38 +86,34 @@ public class JwtAuthSecurityConfiguration {
     }
 
     @Bean
-    DataSource dataSource() {
-        return new EmbeddedDatabaseBuilder()
-                .setType(EmbeddedDatabaseType.H2)
-                .addScript(JdbcDaoImpl.DEFAULT_USER_SCHEMA_DDL_LOCATION)
+    @Primary
+    @ConfigurationProperties("spring.datasource")
+    public DataSourceProperties dataSourceProperties() {
+        return new DataSourceProperties();
+    }
+
+    @Bean
+    @Primary
+    @ConfigurationProperties("spring.datasource.hikari")
+    public DataSource appDataSource() {
+        return dataSourceProperties()
+                .initializeDataSourceBuilder()
+                .type(HikariDataSource.class)
                 .build();
     }
 
     @Bean
-    JdbcUserDetailsManager userDetailsManager(DataSource dataSource, BCryptPasswordEncoder passwordEncoder) {
-        JdbcUserDetailsManager manager = new JdbcUserDetailsManager(dataSource);
-
-        // Create initial users if they don't exist
-        if (!manager.userExists("nafi")) {
-            manager.createUser(
-                    User.withUsername("nafi")
-                            .password(passwordEncoder.encode("0123"))
-                            .roles("ADMIN")
-                            .build()
-            );
-        }
-
-        if (!manager.userExists("piyal")) {
-            manager.createUser(
-                    User.withUsername("piyal")
-                            .password(passwordEncoder.encode("0123"))
-                            .roles("ADMIN")
-                            .build()
-            );
-        }
-
-        return manager;
+    UserDetailsService userDetailsService(UsersRepository usersRepository) {
+        return username -> usersRepository.findByEmail(username)
+                .map(user -> User.builder()
+                        .username(user.getEmail())
+                        .password(user.getPassword())
+                        .roles(user.getRole())
+                        .disabled(!user.isEnabled())
+                        .build())
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
     }
+
     @Bean
     BCryptPasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
