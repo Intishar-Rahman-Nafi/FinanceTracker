@@ -16,4 +16,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     @Query("SELECT t FROM Transaction t WHERE t.users.id = :userId ORDER BY t.date DESC LIMIT 5")
     List<Transaction> findRecentTransactionsByUser(@Param("userId") Long userId);
+
+    List<Transaction> findByUsers_Id(Long userId);
 }

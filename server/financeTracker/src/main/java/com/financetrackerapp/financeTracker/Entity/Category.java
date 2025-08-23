@@ -20,12 +20,22 @@ public class Category {
     @Column(nullable = false)
     private CategoryType type;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private Users user;
+
     public enum CategoryType {
         INCOME,
         EXPENSE
     }
 
     public Category() {}
+
+    public Category(String name, CategoryType type, Users user) {
+        this.name = name;
+        this.type = type;
+        this.user = user;
+    }
 
     public Category(String name, CategoryType type) {
         this.name = name;

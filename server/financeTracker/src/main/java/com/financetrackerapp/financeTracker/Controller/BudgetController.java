@@ -6,12 +6,14 @@ import com.financetrackerapp.financeTracker.Entity.Category;
 import com.financetrackerapp.financeTracker.Entity.Users;
 import com.financetrackerapp.financeTracker.Repository.BudgetRepository;
 import com.financetrackerapp.financeTracker.Repository.CategoryRepository;
-import com.financetrackerapp.financeTracker.Repository.UsersRepository;
+import com.financetrackerapp.financeTracker.Utils.SecurityUtils;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.YearMonth;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api")
@@ -19,34 +21,43 @@ public class BudgetController {
 
     private final BudgetRepository budgetRepository;
     private final CategoryRepository categoryRepository;
-    private final UsersRepository usersRepository;
+    private final SecurityUtils securityUtils;
 
     public BudgetController(BudgetRepository budgetRepository, 
                           CategoryRepository categoryRepository,
-                          UsersRepository usersRepository) {
+                          SecurityUtils securityUtils) {
         this.budgetRepository = budgetRepository;
         this.categoryRepository = categoryRepository;
-        this.usersRepository = usersRepository;
+        this.securityUtils = securityUtils;
+    }
+
+    @GetMapping("/budgets")
+    public ResponseEntity<List<BudgetDto>> getBudgets() {
+        Users currentUser = securityUtils.getCurrentUser();
+        List<Budget> budgets = budgetRepository.findByUser_Id(currentUser.getId());
+        List<BudgetDto> budgetDtos = budgets.stream()
+                .map(BudgetDto::new)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(budgetDtos);
     }
 
     @PostMapping("/budgets")
     public ResponseEntity<BudgetDto> createBudget(@RequestBody BudgetDto budgetDto) {
-        // Find the user
-        Users user = usersRepository.findById(budgetDto.getUserId())
-                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+        Users currentUser = securityUtils.getCurrentUser();
 
-        // Find the category
+        // Find the category (ensuring it belongs to the current user)
         Category category = categoryRepository.findById(budgetDto.getCategoryId())
-                .orElseThrow(() -> new EntityNotFoundException("Category not found"));
+                .filter(cat -> cat.getUser().getId().equals(currentUser.getId()))
+                .orElseThrow(() -> new EntityNotFoundException("Category not found for this user"));
 
         // Check if budget already exists for this user, category, and month
-        if (budgetRepository.existsByUserAndCategoryAndMonth(user, category, budgetDto.getMonth())) {
+        if (budgetRepository.existsByUserAndCategoryAndMonth(currentUser, category, budgetDto.getMonth())) {
             throw new IllegalStateException("Budget already exists for this category and month");
         }
 
         // Create and save the new budget
         Budget budget = new Budget();
-        budget.setUser(user);
+        budget.setUser(currentUser);
         budget.setCategory(category);
         budget.setAmount(budgetDto.getAmount());
         budget.setMonth(budgetDto.getMonth());

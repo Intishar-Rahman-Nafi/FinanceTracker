@@ -10,6 +10,7 @@ public class CategoryDto {
     private Long id;
     private String name;
     private Category.CategoryType type;
+    private Long userId;
 
     public CategoryDto() {}
 
@@ -17,5 +18,6 @@ public class CategoryDto {
         this.id = category.getId();
         this.name = category.getName();
         this.type = category.getType();
+        this.userId = category.getUser() != null ? category.getUser().getId() : null;
     }
 }

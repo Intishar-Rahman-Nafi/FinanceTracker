@@ -1,39 +1,42 @@
 package com.financetrackerapp.financeTracker.Controller;
 
 import com.financetrackerapp.financeTracker.Dto.TransactionDto;
+import com.financetrackerapp.financeTracker.Entity.Category;
 import com.financetrackerapp.financeTracker.Entity.Transaction;
 import com.financetrackerapp.financeTracker.Entity.Users;
 import com.financetrackerapp.financeTracker.Repository.CategoryRepository;
 import com.financetrackerapp.financeTracker.Repository.TransactionRepository;
-import com.financetrackerapp.financeTracker.Repository.UsersRepository;
+import com.financetrackerapp.financeTracker.Utils.SecurityUtils;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.Data;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.ZoneId;
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/transactions")
+@RequestMapping("/api/transactions")
 public class TransactionController {
-    private final UsersRepository usersRepository;
     private final TransactionRepository transactionRepository;
     private final CategoryRepository categoryRepository;
+    private final SecurityUtils securityUtils;
 
-    public TransactionController(TransactionRepository transactionRepository, 
-                              UsersRepository usersRepository,
-                              CategoryRepository categoryRepository) {
+    public TransactionController(TransactionRepository transactionRepository,
+                              CategoryRepository categoryRepository,
+                              SecurityUtils securityUtils) {
         this.transactionRepository = transactionRepository;
-        this.usersRepository = usersRepository;
         this.categoryRepository = categoryRepository;
+        this.securityUtils = securityUtils;
     }
 
     @GetMapping
     public ResponseEntity<List<TransactionDto>> getTransactions() {
-        List<Transaction> transactions = transactionRepository.findAll();
+        Users currentUser = securityUtils.getCurrentUser();
+        List<Transaction> transactions = transactionRepository.findByUsers_Id(currentUser.getId());
         List<TransactionDto> transactionDtos = transactions.stream()
                 .map(this::convertToDto)
                 .collect(Collectors.toList());
@@ -41,14 +44,12 @@ public class TransactionController {
     }
 
     @PostMapping
-    public ResponseEntity<TransactionDto> addTransaction(@RequestBody TransactionDto transactionDto,
-                                                       @RequestParam Long userId) {
-        Users user = usersRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+    public ResponseEntity<TransactionDto> addTransaction(@RequestBody TransactionDto transactionDto) {
+        Users currentUser = securityUtils.getCurrentUser();
                 
         // Find and validate category
-        com.financetrackerapp.financeTracker.Entity.Category category = categoryRepository.findById(transactionDto.getCategoryId())
-                .orElseThrow(() -> new EntityNotFoundException("Category not found"));
+        Category category = categoryRepository.findByIdAndUser_Id(transactionDto.getCategoryId(), currentUser.getId())
+                .orElseThrow(() -> new EntityNotFoundException("Category not found for this user"));
 
         // Create and save transaction
         Transaction transaction = new Transaction();
@@ -59,7 +60,7 @@ public class TransactionController {
         transaction.setDescription(transactionDto.getDescription());
         transaction.setCategory(category);
         transaction.setType(Transaction.TransactionType.valueOf(transactionDto.getType()));
-        transaction.setUser(user);
+        transaction.setUser(currentUser);
         
         Transaction savedTransaction = transactionRepository.save(transaction);
         return ResponseEntity.ok(convertToDto(savedTransaction));

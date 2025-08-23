@@ -74,7 +74,7 @@ public class AuthController {
                 Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getRole()))
         );
 
-        // 4. Generate and return JWT
+        // 4. Generate and return JWT with user details
         return ResponseEntity.ok(jwtAuthResource.authenticate(authentication));
     }
 

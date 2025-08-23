@@ -1,5 +1,8 @@
 package com.financetrackerapp.financeTracker.Security;
 
+import com.financetrackerapp.financeTracker.Dto.LoginResponse;
+import com.financetrackerapp.financeTracker.Entity.Users;
+import com.financetrackerapp.financeTracker.Repository.UsersRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -12,15 +15,20 @@ import java.util.stream.Collectors;
 
 @RestController
 public class JwtAuthenticationResource {
-    public JwtEncoder jwtEncoder;
+    private final JwtEncoder jwtEncoder;
+    private final UsersRepository usersRepository;
 
-    public JwtAuthenticationResource(JwtEncoder jwtEncoder) {
+    public JwtAuthenticationResource(JwtEncoder jwtEncoder, UsersRepository usersRepository) {
         this.jwtEncoder = jwtEncoder;
+        this.usersRepository = usersRepository;
     }
 
     @PostMapping("/authenticate")
-    public JwtResponse authenticate(Authentication authentication) {
-        return new JwtResponse(createToken(authentication));
+    public LoginResponse authenticate(Authentication authentication) {
+        String token = createToken(authentication);
+        Users user = usersRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        return new LoginResponse(token, user);
     }
 
     private String createToken(Authentication authentication) {
@@ -31,6 +39,8 @@ public class JwtAuthenticationResource {
     }
 
     private String createClaims(Authentication authentication) {
-        return authentication.getAuthorities().stream().map(a -> a.getAuthority()).collect(Collectors.joining(" "));
+        return authentication.getAuthorities().stream()
+                .map(a -> a.getAuthority())
+                .collect(Collectors.joining(" "));
     }
 }

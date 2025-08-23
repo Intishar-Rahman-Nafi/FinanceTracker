@@ -2,7 +2,11 @@ package com.financetrackerapp.financeTracker.Controller;
 
 import com.financetrackerapp.financeTracker.Dto.CategoryDto;
 import com.financetrackerapp.financeTracker.Entity.Category;
+import com.financetrackerapp.financeTracker.Entity.Users;
 import com.financetrackerapp.financeTracker.Repository.CategoryRepository;
+import com.financetrackerapp.financeTracker.Repository.UsersRepository;
+import com.financetrackerapp.financeTracker.Utils.SecurityUtils;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,15 +19,18 @@ import java.util.stream.Collectors;
 public class CategoryController {
 
     private final CategoryRepository categoryRepository;
+    private final SecurityUtils securityUtils;
 
-    public CategoryController(CategoryRepository categoryRepository) {
+    public CategoryController(CategoryRepository categoryRepository, 
+                            SecurityUtils securityUtils) {
         this.categoryRepository = categoryRepository;
+        this.securityUtils = securityUtils;
     }
 
     @GetMapping("/categories")
-    public ResponseEntity<List<CategoryDto>> getAllCategories() {
-        List<Category> categories = categoryRepository.findAll();
-        System.out.println("Categories: " + categories);
+    public ResponseEntity<List<CategoryDto>> getCategoriesByUser() {
+        Users currentUser = securityUtils.getCurrentUser();
+        List<Category> categories = categoryRepository.findByUser_Id(currentUser.getId());
         List<CategoryDto> categoryDtos = categories.stream()
                 .map(CategoryDto::new)
                 .collect(Collectors.toList());
@@ -31,16 +38,18 @@ public class CategoryController {
     }
 
     @PostMapping("/categories")
-    public ResponseEntity<CategoryDto> createCategory(@RequestBody CategoryDto categoryDto) {
-        // Check if category with same name already exists
-        if (categoryRepository.existsByName(categoryDto.getName())) {
-            throw new IllegalStateException("Category with name " + categoryDto.getName() + " already exists");
+    public ResponseEntity<CategoryDto> createCategory(
+            @RequestBody CategoryDto categoryDto) {
+        
+        Users currentUser = securityUtils.getCurrentUser();
+        
+        // Check if category with same name already exists for this user
+        if (categoryRepository.existsByNameAndUser_Id(categoryDto.getName(), currentUser.getId())) {
+            throw new IllegalStateException("Category with name " + categoryDto.getName() + " already exists for this user");
         }
         
         // Create and save new category
-        Category category = new Category();
-        category.setName(categoryDto.getName());
-        category.setType(categoryDto.getType());
+        Category category = new Category(categoryDto.getName(), categoryDto.getType(), currentUser);
         
         Category savedCategory = categoryRepository.save(category);
         return ResponseEntity
